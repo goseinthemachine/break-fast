@@ -7,8 +7,7 @@ def render args
   args.outputs.labels  << [580, 460, args.inputs.controller_one.left_analog_y_perc, 5, 1]
   args.outputs.labels  << [640, 500, args.inputs.controller_one.right_analog_x_perc, 5, 1]
   args.outputs.labels  << [640, 460, args.inputs.controller_one.right_analog_y_perc, 5, 1]
-  args.outputs.labels  << [640, 420, "v:#{args.state.player.dx}", 5, 1]
-  args.outputs.sprites << [x: 0, y: 0, w: 1280, h: 720, path: 'sprites/background.png']
+  args.outputs.labels  << [640, 420, "v:#{args.state.player.dx} state: #{args.state.player.state}", 5, 1]
 
   render_background args
 
@@ -56,8 +55,24 @@ end
 def calc args
   # Since velocity is the change in position, the change in x increases by dx. Same with y and dy.
   if args.state.player.dx.abs < 0.1
+    args.state.player.state = :standing
     args.state.player.dx = 0
+  else
+    args.state.player.state = :running
   end
+
+  if args.state.player.y <= args.state.bridge_top
+    if args.state.player.dx < 0
+      args.state.player.r = 180
+    elsif args.state.player.dx > 0
+      args.state.player.r = 0
+    end
+  end
+
+  if args.state.player.y > args.state.bridge_top
+    args.state.player.state = :jumping
+  end
+
   args.state.player.x  += args.state.player.dx
   args.state.player.y  += args.state.player.dy
 
@@ -104,14 +119,16 @@ def defaults args
   args.state.player.dx ||= 0
   args.state.player.r  ||= 0
   args.state.player.max_dx ||= 10
+  args.state.player.state ||= :standing
   args.state.game_over_at ||= 0
   args.state.animation_time ||=0
+
 
   args.state.timeleft ||=0
   args.state.timeright ||=0
   args.state.lastpush ||=0
 
-  args.state.inputlist ||=  ["j","k","l"]
+
 end
 
 def fiddle args
