@@ -182,18 +182,34 @@ class ActionScene
     calc_y
 
     state.player.frame =
-      case(state.player.state)
-      when :standing
-        'sprites/frame0000.png'
-      when :running
-        "sprites/frame000#{state.tick_count % 10}.png"
-      when :jumping
-        'sprites/jumping0000.png'
-      when :nair
-      when :nattack
+      if state.player.state == :attacking
+        case state.player.attack_state
+        when :nattack
+          frame = (state.player.attack.at.elapsed_time % state.player.attack.nattack_duration).to_s.rjust(4, '0')
+          "sprites/box_nattack#{frame}.png"
+        when :nair
+          frame = (state.player.attack.at.elapsed_time % state.player.attack.nair_duration).to_s.rjust(4, '0')
+          "sprites/box_nair#{frame}.png"
+        when :fattack
+          frame = (state.player.attack.at.elapsed_time % state.player.attack.fattack_duration).to_s.rjust(4, '0')
+          "sprites/box_fattack#{frame}.png"
+        end
+
       else
-        'sprites/frame0000.png'
+        case(state.player.state)
+        when :standing
+          'sprites/frame0000.png'
+        when :running
+          "sprites/frame000#{state.tick_count % 10}.png"
+        when :jumping
+          'sprites/jumping0000.png'
+        when :nair
+        when :nattack
+        else
+          'sprites/frame0000.png'
+        end
       end
+
   end
 
   def defaults
@@ -238,9 +254,9 @@ class ActionScene
     state.player_max_run_speed        = 10
     state.player_speed_slowdown_rate  = 0.9
     state.player_acceleration         = 0.9
-    state.player.attack.nattack_duration = 5
-    state.player.attack.fattack_duration = 10
-    state.player.attack.nair_duration = 5
+    state.player.attack.nattack_duration = 12
+    state.player.attack.fattack_duration = 28
+    state.player.attack.nair_duration = 12
     state.player.action.jump_duration = 5
   end
 
