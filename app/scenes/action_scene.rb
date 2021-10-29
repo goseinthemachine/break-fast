@@ -1,6 +1,8 @@
+require 'mygame/app/scenes/good_end_scene.rb'
 class ActionScene
-  attr_accessor :inputs, :state, :outputs
+  attr_accessor :inputs, :state, :outputs, :args
   def initialize(args)
+    self.args = args
     self.inputs = args.inputs
     self.state = args.state
     self.outputs = args.outputs
@@ -19,6 +21,10 @@ class ActionScene
   end
 
   def render
+
+    if state.debug.show_hitboxes
+      outputs.primitives  << state.door.hurtbox.solid!
+    end
     outputs.labels  << [580, 500, inputs.controller_one.left_analog_x_perc, 5, 1]
     outputs.labels  << [580, 460, inputs.controller_one.left_analog_y_perc, 5, 1]
     outputs.labels  << [640, 500, inputs.controller_one.right_analog_x_perc, 5, 1]
@@ -26,7 +32,6 @@ class ActionScene
     outputs.labels  << [640, 420, "attack: #{state.player.attack_state} state: #{state.player.state}", 5, 1]
     outputs.labels  << [640, 390, "jump elapsed time: #{state.player.jump.at ? state.player.jump.at.elapsed_time : ''}", 5, 1]
     outputs.labels  << [640, 360, "attack elapsed time: #{state.player.attack.at ? state.player.attack.at.elapsed_time : ''}", 5, 1]
-
     render_background
 
     door = {
@@ -34,7 +39,7 @@ class ActionScene
       y: -10,
       w: 500,
       h: 1000,
-      path: 'sprites/door0000.png'
+      path: state.door.frame
     }
 
     player = {
@@ -49,7 +54,7 @@ class ActionScene
     outputs.sprites << door
 
     outputs.sprites << player
-
+    outputs.solids  << [530, 320, 50, 50]
   end
 
   def handle_player_movement
@@ -88,6 +93,7 @@ class ActionScene
       if inputs.controller_one.key_down.y
         state.player.dy = 15
         state.player.jump.at ||= state.tick_count
+        outputs.sounds << "sounds/box-landing.wav"
       end
     end
 
@@ -110,8 +116,19 @@ class ActionScene
   end
 
   def calc_attack
+
     case state.player.attack_state
     when :nattack
+      state.player.attack.hitbox = {
+        x: state.player.x + (state.player.w/2 - 12.5) + (state.player.flip_horizontally ?  -50 : +50),
+        y: state.player.y + (state.player.h/2 - 12.5) + 45,
+        w: 25,
+        h: 25,
+        r: 255,
+        g: 0,
+        b: 0,
+        a: 75
+      }
       state.player.dx = 0
       if state.player.attack.at.elapsed_time > state.player.attack.nattack_duration
         state.player.state = :standing
@@ -119,18 +136,40 @@ class ActionScene
         state.player.attack_state = nil
       end
     when :nair
+      state.player.attack.hitbox = {
+        x: state.player.x,
+        y: state.player.y,
+        w: state.player.w,
+        h: state.player.h,
+        r: 255,
+        g: 0,
+        b: 0,
+        a: 75
+      }
       if state.player.attack.at.elapsed_time > state.player.attack.nair_duration
         state.player.state = :jumping
         state.player.attack.at = nil
         state.player.attack_state = nil
       end
     when :fattack
+      state.player.attack.hitbox = {
+        x: state.player.x + (state.player.w/2) + (state.player.flip_horizontally ?  -60 : 10),
+        y: state.player.y,
+        w: 50,
+        h: state.player.h,
+        r: 255,
+        g: 0,
+        b: 0,
+        a: 75
+      }
+
       if state.player.attack.at.elapsed_time > state.player.attack.fattack_duration
         state.player.state = :standing
         state.player.attack.at = nil
         state.player.attack_state = nil
       end
     end
+
   end
 
   def calc_x
@@ -158,6 +197,97 @@ class ActionScene
     state.player.y  = state.player.y.greater(state.bridge_top)
     # player is not falling if it is located on the top of the bridge
     state.player.falling = state.player.y > state.bridge_top
+    state.player.action.at = nil unless state.player.falling
+  end
+
+  def calc_sprite_frame
+    state.player.frame =
+      if state.player.state == :attacking
+        case state.player.attack_state
+        when :nattack
+          frame = (state.player.attack.at.elapsed_time % state.player.attack.nattack_duration).to_s.rjust(4, '0')
+          "sprites/box_nattack#{frame}.png"
+        when :nair
+          frame = (state.player.attack.at.elapsed_time % state.player.attack.nair_duration).to_s.rjust(4, '0')
+          "sprites/box_nair#{frame}.png"
+        when :fattack
+          frame = (state.player.attack.at.elapsed_time % state.player.attack.fattack_duration).to_s.rjust(4, '0')
+          "sprites/box_fattack#{frame}.png"
+        end
+
+      else
+        case(state.player.state)
+        when :standing
+          'sprites/frame0000.png'
+        when :running
+          if state.tick_count % 20 == 0
+            outputs.sounds << "sounds/box-walking.wav"
+          end
+          "sprites/frame000#{state.tick_count % 10}.png"
+        when :jumping
+          'sprites/jumping0000.png'
+        when :nair
+        when :nattack
+        else
+          'sprites/frame0000.png'
+        end
+      end
+  end
+
+  def calc_hit
+
+    case state.player.attack_state
+    when :nattack
+      frame = state.player.attack.at.elapsed_time % state.player.attack.nattack_duration
+      if frame == 10
+        if state.door.hurtbox.intersect_rect?(state.player.attack.hitbox, 0.0)
+          hit_door 1
+          if state.debug.show_hitboxes
+            outputs.primitives  << state.player.attack.hitbox.solid!
+          end
+        end
+      end
+    when :nair
+      frame = state.player.attack.at.elapsed_time % state.player.attack.nair_duration
+      if frame == 10
+        if state.door.hurtbox.intersect_rect?(state.player.attack.hitbox, 0.0)
+          hit_door 3
+          if state.debug.show_hitboxes
+            outputs.primitives  << state.player.attack.hitbox.solid!
+          end
+        end
+      end
+    when :fattack
+      frame = state.player.attack.at.elapsed_time % state.player.attack.fattack_duration
+      if frame == 20
+        if state.door.hurtbox.intersect_rect?(state.player.attack.hitbox, 0.0)
+          hit_door 10
+          if state.debug.show_hitboxes
+            outputs.primitives  << state.player.attack.hitbox.solid!
+          end
+        end
+      end
+
+    end
+  end
+
+  def hit_door dmg
+    state.door.hp -= dmg
+    if dmg > 5
+      outputs.sounds << "sounds/door-bang.wav"
+    else
+      outputs.sounds << "sounds/door-tap.wav"
+    end
+  end
+
+  def calc_door_frame
+    if state.door.hp > 50
+      state.door.frame = 'sprites/door0000.png'
+    elsif state.door.hp <= 0
+      $active_scene = GoodEndScene.new(self.args)
+    else
+          state.door.frame = 'sprites/door0001.png'
+    end
   end
 
   def calc
@@ -181,34 +311,11 @@ class ActionScene
 
     calc_y
 
-    state.player.frame =
-      if state.player.state == :attacking
-        case state.player.attack_state
-        when :nattack
-          frame = (state.player.attack.at.elapsed_time % state.player.attack.nattack_duration).to_s.rjust(4, '0')
-          "sprites/box_nattack#{frame}.png"
-        when :nair
-          frame = (state.player.attack.at.elapsed_time % state.player.attack.nair_duration).to_s.rjust(4, '0')
-          "sprites/box_nair#{frame}.png"
-        when :fattack
-          frame = (state.player.attack.at.elapsed_time % state.player.attack.fattack_duration).to_s.rjust(4, '0')
-          "sprites/box_fattack#{frame}.png"
-        end
+    calc_sprite_frame
 
-      else
-        case(state.player.state)
-        when :standing
-          'sprites/frame0000.png'
-        when :running
-          "sprites/frame000#{state.tick_count % 10}.png"
-        when :jumping
-          'sprites/jumping0000.png'
-        when :nair
-        when :nattack
-        else
-          'sprites/frame0000.png'
-        end
-      end
+    calc_hit
+
+    calc_door_frame
 
   end
 
@@ -227,12 +334,23 @@ class ActionScene
     state.player.r  ||= 0
     state.player.flip_horizontally ||= false
     state.player.frame ||= 'sprites/frame0000.png'
+    state.door.frame ||= 'sprites/door0000.png'
     state.player.max_dx ||= 10
     state.player.state ||= :standing
     state.game_over_at ||= 0
     state.animation_time || state.timeleft ||=0
     state.timeright ||=0
     state.lastpush ||=0
+    state.door.hurtbox ||= {
+      x: 1230,
+      y: 50,
+      w: 50,
+      h: 720,
+      r: 0,
+      g: 0,
+      b: 255,
+      a: 75
+    }
 
   end
 
@@ -243,6 +361,10 @@ class ActionScene
     state.player.dx = 0
     state.player.r  = 0
     state.player.state = :standing
+    state.door.hp = 100
+    state.player.attack_state = nil
+    state.player.attack.at = nil
+    state.player.state = nil
   end
 
   def fiddle
@@ -258,6 +380,9 @@ class ActionScene
     state.player.attack.fattack_duration = 28
     state.player.attack.nair_duration = 12
     state.player.action.jump_duration = 5
+    state.debug.show_hitboxes = false
+    state.player.attack.hitbox ||= nil
+    state.door.hp ||= 100
   end
 
 end
