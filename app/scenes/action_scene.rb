@@ -1,4 +1,6 @@
-require 'mygame/app/scenes/good_end_scene.rb'
+require 'app/scenes/good_end_scene.rb'
+require 'app/scenes/bad_end_scene.rb'
+
 class ActionScene
   attr_accessor :inputs, :state, :outputs, :args
   def initialize(args)
@@ -20,19 +22,25 @@ class ActionScene
     outputs.sprites << [x: 0, y: 0, w: 1280, h: 720, path: 'sprites/background.png']
   end
 
+  def render_notice
+    if state.notice.duration < 10
+      state.notice.duration += 1 if state.start.at.elapsed_time % 60 == 0
+      if state.notice.duration % 2 == 1
+        outputs.sprites << [x: 975, y: 500, w: 250, h: 250, path: 'sprites/break.png']
+      end
+    end
+  end
+
   def render
 
     if state.debug.show_hitboxes
       outputs.primitives  << state.door.hurtbox.solid!
     end
-    outputs.labels  << [580, 500, inputs.controller_one.left_analog_x_perc, 5, 1]
-    outputs.labels  << [580, 460, inputs.controller_one.left_analog_y_perc, 5, 1]
-    outputs.labels  << [640, 500, inputs.controller_one.right_analog_x_perc, 5, 1]
-    outputs.labels  << [640, 460, inputs.controller_one.right_analog_y_perc, 5, 1]
-    outputs.labels  << [640, 420, "attack: #{state.player.attack_state} state: #{state.player.state}", 5, 1]
-    outputs.labels  << [640, 390, "jump elapsed time: #{state.player.jump.at ? state.player.jump.at.elapsed_time : ''}", 5, 1]
-    outputs.labels  << [640, 360, "attack elapsed time: #{state.player.attack.at ? state.player.attack.at.elapsed_time : ''}", 5, 1]
+    outputs.labels << [540, 50, "Time Left:"]
+    outputs.labels << [580, 25, "#{ state.time_left }"]
+
     render_background
+    render_notice
 
     door = {
       x: 1020,
@@ -58,20 +66,20 @@ class ActionScene
   end
 
   def handle_player_movement
-    if inputs.controller_one.left_analog_x_perc > 0
+    if inputs.controller_one.left_analog_x_perc > 0 || inputs.keyboard.d
       if state.player.dx < state.player_max_run_speed
         state.player.dx += if state.player.y > state.bridge_top
-                             0.2 * inputs.controller_one.left_analog_x_perc
+                             0.2 * state.player_acceleration
                            else
-                             inputs.controller_one.left_analog_x_perc
+                             state.player_acceleration
                            end
       end
-    elsif inputs.controller_one.left_analog_x_perc < 0
+    elsif inputs.controller_one.left_analog_x_perc < 0 || inputs.keyboard.a
       if state.player.dx > -state.player_max_run_speed
         state.player.dx += if state.player.y > state.bridge_top
-                             0.2 * inputs.controller_one.left_analog_x_perc
+                             0.2 * -state.player_acceleration
                            else
-                             inputs.controller_one.left_analog_x_perc
+                             -state.player_acceleration
                            end
       end
     else
@@ -90,22 +98,22 @@ class ActionScene
     end
 
     if !state.player.falling
-      if inputs.controller_one.key_down.y
+      if inputs.controller_one.key_down.y || inputs.keyboard.key_down.space || inputs.keyboard.key_down.w
         state.player.dy = 15
         state.player.jump.at ||= state.tick_count
         outputs.sounds << "sounds/box-landing.wav"
       end
     end
 
-    if inputs.controller_one.key_up.y
+    if inputs.controller_one.key_up.y || inputs.keyboard.key_up.space
       state.player.jump.at = nil
     end
-    if inputs.controller_one.key_down.x
+    if inputs.controller_one.key_down.x || inputs.keyboard.key_down.j
       state.player.state = :attacking
       state.player.attack.at ||= state.tick_count
       if state.player.falling
         state.player.attack_state = :nair
-      elsif  inputs.controller_one.left_analog_x_perc.abs > 0
+      elsif  inputs.controller_one.left_analog_x_perc.abs > 0 || inputs.keyboard.d || inputs.keyboard.a
         state.player.attack_state = :fattack
       else
         state.player.attack_state = :nattack
@@ -290,6 +298,19 @@ class ActionScene
     end
   end
 
+  def calc_time_left
+    if state.start.at.elapsed_time % 60 == 0
+      state.time_left -= 1
+      if state.time_left > 1
+        state.notice.at = state.tick_count
+      end
+    end
+
+    if state.time_left <= 0
+      $active_scene = BadEndScene.new(self.args)
+    end
+  end
+
   def calc
     if state.player.state == :attacking && state.player.falling
       calc_x
@@ -317,6 +338,8 @@ class ActionScene
 
     calc_door_frame
 
+    calc_time_left
+
   end
 
   def defaults
@@ -325,6 +348,7 @@ class ActionScene
     state.tick_count = state.tick_count
     state.bridge_top = 64
     state.bridge_end = 1270
+    state.start.at ||= state.tick_count
     state.player.x  ||= 0                        # initializes player's properties
     state.player.y  ||= state.bridge_top
     state.player.w  ||= 128
@@ -341,6 +365,9 @@ class ActionScene
     state.animation_time || state.timeleft ||=0
     state.timeright ||=0
     state.lastpush ||=0
+    state.time_left ||= 20
+    state.notice.duration ||= 0
+    state.notice.at = nil
     state.door.hurtbox ||= {
       x: 1230,
       y: 50,
@@ -365,6 +392,9 @@ class ActionScene
     state.player.attack_state = nil
     state.player.attack.at = nil
     state.player.state = nil
+    state.start.at = nil
+    state.time_left = 20
+    state.notice.duration = 0
   end
 
   def fiddle
@@ -383,6 +413,7 @@ class ActionScene
     state.debug.show_hitboxes = false
     state.player.attack.hitbox ||= nil
     state.door.hp ||= 100
+
   end
 
 end
